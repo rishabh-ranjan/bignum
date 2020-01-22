@@ -1,0 +1,65 @@
+Design Document - COP290 Assignment 3
+
+Language used: C
+
+Number representation:
+	sign magnitude, floating point
+
+	radix:	10^9
+		efficient conversion to and from base 10.
+		32 bit *unsigned* int to represent each digit.
+		calculate (esp. multiply) in 64 bit variables to avoid overflow.
+		only 30 bits are used per digit, so adding two digits will not overflow in 32 bit unsigned int.
+
+	struct bignum:
+		sign: char (only 1 bit required)
+		point_offset: position of point left of LSD, signed int
+						floating point offset may overflow int, try to detect and raise exception.
+		digits:	array of unsigned ints (struct has pointer though)
+				dynamic memory allocation, but no resizing
+				! remember to free the memory
+				determine a safe upperbound for the number of digits on creation.
+		numdigits: size of digits array,
+					same as that allocated.
+
+Functions:
+	bignum_alloc: allocate a bignum based on input number of digits.
+					be wary of off-by-one errors.
+
+	bignum_comp: -1 if a < b, 0 if a == b, 1 a > b.
+					cases depend on signs of a and b.
+
+	string_to_bignum:
+		assume no space
+		check for - sign
+		check for floating point (find its position)
+		return a bignum from a string
+
+	bignum_to_string:
+		convert to string
+
+	unsigned_add: ignore sign and add
+					ripple carry add
+					note that carry will always be 0 or 1
+					ensure sufficient space in result for the extra digit coming from last carry.
+
+	unsigned_sub:
+		ignore sign and return a - b.
+		only for |a| >= |b|, ensuring non-negative result.
+
+	signed_add:
+		return a + b with signs considered.
+		NOTE: no signed_sub. *change* sign of b and add.
+		divide into cases depending on signs of a and b, and comparision of a with b.
+
+	signed_mul:
+		use toom-cook-3 multiplication algorithm, ignoring signs.
+		set sign of answer.
+		handle the floating point shift carefully.
+
+	signed_div:
+		use the algo of TAOCP for unsigned div.
+		set sign of answer.
+		handle the floating point.
+
+// further design documentation pending
