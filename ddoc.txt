@@ -2,6 +2,10 @@ Design Document - COP290 Assignment 3
 
 Language used: C
 
+File structure:
+	all structure and function implementations in one file bignum.c
+	forward declarations in bignum.h, to be used by bignum.c also.
+
 Number representation:
 	sign magnitude, floating point
 
@@ -25,6 +29,8 @@ Number representation:
 Functions:
 	bignum_alloc: allocate a bignum based on input number of digits.
 					be wary of off-by-one errors.
+
+	bignum_free:
 
 	bignum_comp: -1 if a < b, 0 if a == b, 1 a > b.
 					cases depend on signs of a and b.
