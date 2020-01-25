@@ -7,8 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-// only for debugging
+#define DEBUG
+
+#ifdef DEBUG
 #include <stdio.h>
+#endif
 
 /* Radix for bignum representation = 1e9 */
 #define RADIX 1000000000
@@ -23,9 +26,9 @@ typedef unsigned digit_t;
  * Uses sign-magnitude form.
  */
 struct bignum {
-	unsigned sign; /* +ve for -ve bignum, 0 for +ve, any for 0 */
-	unsigned point_offset;
-	unsigned num_digits; /* exact size of digits array; leading zeroes allowed */
+	int sign; /* +ve for -ve bignum, 0 for +ve, any for 0 */
+	int point_offset;
+	int num_digits; /* exact size of digits array; leading zeroes allowed */
 	digit_t *digits;
 };
 
@@ -107,7 +110,6 @@ struct bignum *string_to_bignum(char *str) {
 		if (ch == DOT_CHAR) continue; // skip point
 		int dd = ch - ZERO_CHAR; // decimal digit
 		ret->digits[bdc] += dd * POW10[ddc];
-		printf("%d\n", ret->digits[bdc]);
 		if (ddc == RNUM - 1) {
 			ddc = 0;
 			++bdc;
@@ -124,37 +126,60 @@ struct bignum *string_to_bignum(char *str) {
  * Return NULL on error.
  */
 #define TEN 10
+#define ZERO_STRING "0"
 char *bignum_to_string(struct bignum *num) {
+	int ofsdi = num->point_offset - 1; // offset digit index; . is to its left
+	int fnzdi; // first non-zero digit index
+	for (fnzdi = 0; fnzdi < num->num_digits && !num->digits[fnzdi]; ++fnzdi);
+	if (fnzdi == num->num_digits) return ZERO_STRING;
+	int lnzdi; // last non-zero digit index
+	for (lnzdi = num->num_digits - 1; lnzdi >= 0 && !num->digits[lnzdi]; --lnzdi);
+
 	// length of returned string
 	int len = num->num_digits * RNUM + !num->point_offset + num->sign;
-	// char *ret = malloc((len + 1) * sizeof(char)); // +1 for '\0'
-	// TODO: use above for non-debug
-	char *ret = malloc((len + num->num_digits + 1) * sizeof(char));
+	// uses some extra memory, but that's ok
+#ifdef DEBUG
+	char *ret = malloc((len + num->num_digits + 2) * sizeof(char));
+#else
+	char *ret = malloc((len + 2) * sizeof(char)); // +2 for '\0' and 0.
+#endif
 	char *iter = ret;
+
 	if (num->sign) *iter++ = MINUS_CHAR;
-	for (int i = 0; i < (int)num->num_digits; ++i) {
-		if (num->num_digits - i == num->point_offset) {
+
+	// display 0 digits left or right of point if all non-zero digits lie on one side
+	if (fnzdi > ofsdi + 1) {
+		fnzdi = ofsdi + 1;
+	}
+	if (lnzdi <= ofsdi) {
+		lnzdi = ofsdi;
+		*iter++ = ZERO_CHAR; // 0.1 instead of .1
+	}
+
+	for (int di = lnzdi; di >= fnzdi; --di) {
+		if (di == ofsdi) {
 			// put floating point (if not at the end)
 			*iter++ = DOT_CHAR;
 		}
+
 		char *mtmp = malloc((RNUM + 2) * sizeof(char));
 		char *tmp = mtmp;
 		++tmp; // to allow post decrementing the base pointer
 		int ctr = 0; // number of digits
-		unsigned cpy = num->digits[num->num_digits - i - 1];
+		unsigned cpy = num->digits[di];
 		while (cpy) {
 			++ctr;
 			int d = cpy % TEN;
-			// if right-most and non-zero point offset, skip 0s
-			if (i == (int)num->num_digits - 1 && num->point_offset && !d) {
+			// if right-most and right of point, skip 0s
+			if (di == fnzdi && di <= ofsdi && !d) {
 				*tmp++ = '\0';
 			} else {
 				*tmp++ = (char)(d + ZERO_CHAR);
 			}
 			cpy /= TEN;
 		}
-		// add zeroes unless left-most
-		if (i != 0) {
+		// add zeroes unless left-most and left of point
+		if (di != lnzdi || di <= ofsdi) {
 			for (int j = 0; j < RNUM - ctr; ++j) {
 				*iter++ = ZERO_CHAR;
 			}
@@ -163,15 +188,14 @@ char *bignum_to_string(struct bignum *num) {
 		while (ctr--) *iter++ = *--tmp;
 		free(mtmp);
 
-		// TODO: remove after debug
+#ifdef DEBUG
 		*iter++ = '_';
+#endif
 	}
 	*iter = '\0';
 	return ret;
 }
 
-// - zero bignum
-// - trailing zeroes
 int main() {
 	while (1) {
 		char *inp = malloc(1000 * sizeof(char));
