@@ -15,8 +15,10 @@
 
 /* Radix for bignum representation = 1e9 */
 #define RADIX 1000000000
+// #define RADIX 10
 /* Number of decimal digits per bignum digit */
 #define RNUM 9
+// #define RNUM 1
 
 /* Ensure digit_t is at least 32 bits; `unsigned' is not strictly portable here. */
 typedef unsigned digit_t;
@@ -109,11 +111,6 @@ struct bignum *string_to_bignum(char *str) {
 	for (int i = 0; i < len - neg; ++i) { // skip minus sign
 		char ch = str[len - i - 1];
 		if (ch == DOT_CHAR) continue; // skip point
-
-#ifdef DEBUG
-		if (ch == '_') continue;
-#endif
-
 		int dd = ch - ZERO_CHAR; // decimal digit
 		ret->digits[bdc] += dd * POW10[ddc];
 		if (ddc == RNUM - 1) {
@@ -278,9 +275,71 @@ struct bignum *sub_unsigned(struct bignum *a, struct bignum *b) {
 	return ret;
 }
 
+/*
+ * Return -ve if |a| < |b|, 0 if |a| == |b|, +ve if |a| > |b|.
+ */
+int mag_comp(struct bignum *a, struct bignum *b) {
+	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
+	// resulting number of digits in whole number part
+	int rwnd = max(a->num_digits - a->point_offset, b->num_digits - b->point_offset);
+
+	// do not compare sizes, as leading digits may be zero
+	// avoid unsigned subtraction
+	for (int i = rwnd - 1; i >= -rofs; --i) {
+		if (a < b) return -1;
+		if (a > b) return 1;
+	}
+	return 0;
+}
+
+// TODO: explore const parameters
+/*
+ * Signed add if `sub' = 0, signed sub if `sub' = 1.
+ */
+struct bignum *addsub_signed(struct bignum *a, struct bignum *b, int sub) {
+	int sa = a->sign;
+	int sb = b->sign ^ sub;
+	struct bignum *ret;
+	if (sa == sb) {
+		ret = add_unsigned(a, b);
+		ret->sign = sa;
+	} else {
+		if (mag_comp(a, b) > 0) {
+			ret = sub_unsigned(a, b);
+			ret->sign = sa;
+		} else {
+			ret = sub_unsigned(b, a);
+			ret->sign = sb;
+		}
+	}
+	return ret;
+}
+
+/*
+ * Return a * b (signed).
+ * Use long multiplication.
+ */
+typedef unsigned long long lldigit_t;
+struct bignum *long_mul(struct bignum *a, struct bignum *b) {
+	struct bignum *ret = bignum_alloc(a->num_digits + b->num_digits);
+	ret->sign = a->sign ^ b->sign;
+	ret->point_offset = a->point_offset + b->point_offset;
+	for (int ai = 0; ai < a->num_digits; ++ai) {
+		lldigit_t carry = 0;
+		for (int bi = 0; bi < b->num_digits; ++bi) {
+			lldigit_t tmp = (lldigit_t)a->digits[ai] * b->digits[bi];
+			tmp += ret->digits[ai + bi] + carry;
+			ret->digits[ai + bi] = tmp % RADIX;
+			carry = tmp / RADIX;
+		}
+		ret->digits[ai + b->num_digits] = carry;
+	}
+	return ret;
+}
+
 int main() {
 	while (1) {
-		///* PARSE
+		/* PARSE
 		char *inp = malloc(1000 * sizeof(char));
 		printf("%s\n", "Enter a bignum as string:");
 		scanf("%s", inp);
@@ -290,8 +349,9 @@ int main() {
 		char *str = bignum_to_string(num);
 		printf("You entered: %s\n", inp);
 		printf("I understood: %s\n", str);
+		*/
 
-		/* ADD SUB
+#if 1
 		char *ia = malloc(1000 * sizeof(char));
 		char *ib = malloc(1000 * sizeof(char));
 		printf("a:\n");
@@ -300,12 +360,20 @@ int main() {
 		scanf("%s", ib);
 		struct bignum *a = string_to_bignum(ia);
 		struct bignum *b = string_to_bignum(ib);
+		/*
 		struct bignum *radd = add_unsigned(a, b);
 		struct bignum *rsub = sub_unsigned(a, b);
+		struct bignum *rsig = addsub_signed(a, b, 1);
 		char *iadd = bignum_to_string(radd);
 		char *isub = bignum_to_string(rsub);
+		char *isig = bignum_to_string(rsig);
 		printf("add:\n%s\n", iadd);
 		printf("sub:\n%s\n", isub);
+		printf("sig:\n%s\n", isig);
 		*/
+		struct bignum *rmul = long_mul(a, b);
+		char *imul = bignum_to_string(rmul);
+		printf("mul:\n%s\n", imul);
+#endif
 	}
 }
