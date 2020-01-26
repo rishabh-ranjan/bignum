@@ -38,6 +38,7 @@ struct bignum {
  * Allocate a bignum with `num_digits' digits.
  * Also set its `num_digits' field.
  * Digits are initialized to 0.
+ * sign and point_offset are initialized to 0.
  * Return NULL if allocation failed.
  */
 struct bignum *bignum_alloc(int num_digits) {
@@ -46,6 +47,8 @@ struct bignum *bignum_alloc(int num_digits) {
 	ptr->digits = calloc(num_digits, sizeof(digit_t));
 	if (!ptr->digits) return NULL;
 	ptr->num_digits = num_digits;
+	ptr->sign = 0;
+	ptr->point_offset = 0;
 	return ptr;
 }
 
@@ -286,8 +289,11 @@ int mag_comp(struct bignum *a, struct bignum *b) {
 	// do not compare sizes, as leading digits may be zero
 	// avoid unsigned subtraction
 	for (int i = rwnd - 1; i >= -rofs; --i) {
-		if (a < b) return -1;
-		if (a > b) return 1;
+		// fprintf(stderr, "i = %d\n", i);
+		int da = get_digit(a, i);
+		int db = get_digit(b, i);
+		if (da < db) return -1;
+		if (da > db) return 1;
 	}
 	return 0;
 }
@@ -337,6 +343,75 @@ struct bignum *long_mul(struct bignum *a, struct bignum *b) {
 	return ret;
 }
 
+/*
+ * Return signed a/b to `PRECISION' bignum digits of precision after point.
+ * Use long division.
+ * Return NULL when b = 0.
+ * TODO: free all newly malloc'ed structs
+ */
+#define PRECISION 3
+struct bignum *long_div(struct bignum *a, struct bignum *b) {
+	int lzb; // number of leading zeroes in b
+	for (lzb = 0; lzb < b->num_digits && !b->digits[b->num_digits - 1 - lzb]; ++lzb);
+	if (lzb == b->num_digits) {
+		// division by zero
+		return NULL;
+	}
+	// number of digits in b ignoring leading zeroes
+	// important for deciding the leading digit place of quotient
+	int bnd = b->num_digits - lzb;
+	// number of zeroes appended to a for precision
+	int naz = PRECISION + b->point_offset - a->point_offset;
+	struct bignum *ret = bignum_alloc(a->num_digits + naz - bnd + 1);
+	ret->sign = a->sign ^ b->sign;
+	ret->point_offset = PRECISION;
+	// intermediate remainder at each step
+	struct bignum *rem = bignum_alloc(a->num_digits + naz + 1);
+	for (int i = 0; i < a->num_digits; ++i) {
+		rem->digits[naz + i] = a->digits[i];
+	}
+	// hide other digits by shifting pointer
+	rem->digits += a->num_digits + naz - bnd + 1;
+	// the number of digits of remainder under consideration at every step
+	rem->num_digits = bnd + 1;
+	// digit being checked at each step
+	struct bignum *dig = bignum_alloc(1);
+	// copy of b wihtout it's point_offset
+	struct bignum *bcpy = malloc(sizeof(struct bignum));
+	bcpy->num_digits = bnd;
+	bcpy->digits = b->digits;
+	for (int ai = a->num_digits - bnd; ai >= -naz; --ai) {
+		// expose a new digit of rem
+		--rem->digits;
+		// binary search next digit of quotient
+		int lo = 0, hi = RADIX - 1;	
+		int mid;
+		struct bignum *isub; // intermediate subtraction result
+		while (hi >= lo) {
+			mid = (lo + hi)/2;
+			dig->digits[0] = mid;
+			struct bignum *tmp = long_mul(dig, bcpy);
+			int comp = mag_comp(tmp, rem);
+			if (comp <= 0) {
+				isub = sub_unsigned(rem, tmp);
+				if (mag_comp(isub, b) < 0) {
+					break;
+				} else {
+					lo = mid + 1;
+				}
+			} else {
+				hi = mid - 1;
+			}
+		}
+		ret->digits[ai + naz] = mid;
+		// overwrite rem with isub
+		for (int ri = 0; ri < rem->num_digits; ++ri) {
+			rem->digits[ri] = isub->digits[ri];
+		}
+	}
+	return ret;
+}
+
 int main() {
 	while (1) {
 		/* PARSE
@@ -370,10 +445,13 @@ int main() {
 		printf("add:\n%s\n", iadd);
 		printf("sub:\n%s\n", isub);
 		printf("sig:\n%s\n", isig);
-		*/
 		struct bignum *rmul = long_mul(a, b);
 		char *imul = bignum_to_string(rmul);
 		printf("mul:\n%s\n", imul);
+		*/
+		struct bignum *rdiv = long_div(a, b);
+		char *idiv = bignum_to_string(rdiv);
+		printf("div:\n%s\n", idiv);
 #endif
 	}
 }
