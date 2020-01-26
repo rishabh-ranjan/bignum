@@ -7,11 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DEBUG
+// #define DEBUG
 
-#ifdef DEBUG
+// #ifdef DEBUG
 #include <stdio.h>
-#endif
+// #endif
 
 /* Radix for bignum representation = 1e9 */
 #define RADIX 1000000000
@@ -34,14 +34,16 @@ struct bignum {
 
 /*
  * Allocate a bignum with `num_digits' digits.
+ * Also set its `num_digits' field.
  * Digits are initialized to 0.
  * Return NULL if allocation failed.
  */
-struct bignum *bignum_alloc(unsigned num_digits) {
+struct bignum *bignum_alloc(int num_digits) {
 	struct bignum *ptr = malloc(sizeof(struct bignum));
 	if (!ptr) return NULL;
 	ptr->digits = calloc(num_digits, sizeof(digit_t));
 	if (!ptr->digits) return NULL;
+	ptr->num_digits = num_digits;
 	return ptr;
 }
 
@@ -101,13 +103,17 @@ struct bignum *string_to_bignum(char *str) {
 	if (!ret) return NULL;
 	ret->sign = neg;
 	ret->point_offset = ofs;
-	ret->num_digits = nd;
 
 	int bdc = 0; // bignum digit counter
 	int ddc = rhz; // decimal digit counter, handles padding
 	for (int i = 0; i < len - neg; ++i) { // skip minus sign
 		char ch = str[len - i - 1];
 		if (ch == DOT_CHAR) continue; // skip point
+
+#ifdef DEBUG
+		if (ch == '_') continue;
+#endif
+
 		int dd = ch - ZERO_CHAR; // decimal digit
 		ret->digits[bdc] += dd * POW10[ddc];
 		if (ddc == RNUM - 1) {
@@ -169,13 +175,7 @@ char *bignum_to_string(struct bignum *num) {
 		unsigned cpy = num->digits[di];
 		while (cpy) {
 			++ctr;
-			int d = cpy % TEN;
-			// if right-most and right of point, skip 0s
-			if (di == fnzdi && di <= ofsdi && !d) {
-				*tmp++ = '\0';
-			} else {
-				*tmp++ = (char)(d + ZERO_CHAR);
-			}
+			*tmp++ = (char)(cpy % TEN + ZERO_CHAR);
 			cpy /= TEN;
 		}
 		// add zeroes unless left-most and left of point
@@ -187,24 +187,125 @@ char *bignum_to_string(struct bignum *num) {
 		// add decimal digit chars
 		while (ctr--) *iter++ = *--tmp;
 		free(mtmp);
-
 #ifdef DEBUG
 		*iter++ = '_';
 #endif
+	}
+	// remove extra zeroes after point
+	if (fnzdi <= ofsdi) {
+#ifdef DEBUG
+		for (--iter; *iter == ZERO_CHAR || *iter == '_'; --iter);
+#else
+		while (*--iter == ZERO_CHAR);
+#endif
+		++iter;
 	}
 	*iter = '\0';
 	return ret;
 }
 
+/*
+ * Get digit at position `ind' from `num'.
+ * Position 0 is just left of point.
+ * +ve, -ve positions even outside those stored are supported.
+ */
+digit_t get_digit(struct bignum *num, int ind) {
+	int di = ind + num->point_offset;
+	if (di < 0 || di >= num->num_digits) return 0;
+	return num->digits[di];
+}
+
+/*
+ * Add ignoring sign.
+ * TODO: learn how to free returned bignum later.
+ * TODO: check error condition of bignum_malloc.
+ * todos apply to other functions as well.
+ */
+#define max(x, y) ((x) > (y) ? (x) : (y))
+struct bignum *add_unsigned(struct bignum *a, struct bignum *b) {
+	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
+	// resulting number of digits in whole number part
+	int rwnd = 1 + max(a->num_digits - a->point_offset, b->num_digits - b->point_offset);
+	struct bignum *ret = bignum_alloc(rwnd + rofs);
+	ret->point_offset = rofs;
+	digit_t carry = 0;
+	for (int i = -rofs; i < rwnd; ++i) { // last carry included
+		digit_t tmp = get_digit(a, i) + get_digit(b, i) + carry;
+		if (tmp >= RADIX) {
+			tmp -= RADIX;
+			carry = 1;
+		} else {
+			carry = 0;
+		}
+		ret->digits[i + rofs] = tmp;
+	}
+	return ret;
+}
+
+/*
+ * Subtract ignoring sign.
+ * Use for a >= b.
+ * Return a - b.
+ */
+struct bignum *sub_unsigned(struct bignum *a, struct bignum *b) {
+	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
+	// resulting number of digits in whole number part, assuming a >= b
+	int rwnd = a->num_digits - a->point_offset;
+	struct bignum *ret = bignum_alloc(rwnd + rofs);
+	ret->point_offset = rofs;
+	digit_t borrow = 0;
+	for (int i = -rofs; i < rwnd; ++i) {
+		digit_t da = get_digit(a, i);
+		if (borrow) {
+			if (da) {
+				--da;
+				borrow = 0;
+			} else {
+				da = RADIX - 1;
+				borrow = 1;
+			}
+		}
+		digit_t db = get_digit(b, i);
+		digit_t tmp;
+		if (da >= db) {
+			tmp = da - db; // do not add borrow = 0 here
+		} else {
+			tmp = da + RADIX - db;
+			borrow = 1;
+		}
+		ret->digits[i + rofs] = tmp;
+	}
+	return ret;
+}
+
 int main() {
 	while (1) {
+		///* PARSE
 		char *inp = malloc(1000 * sizeof(char));
 		printf("%s\n", "Enter a bignum as string:");
 		scanf("%s", inp);
 		struct bignum *num = string_to_bignum(inp);
+		printf("digit[0] = %d\n", num->digits[0]);
 		printf("sign: %d\npoint_offset: %d\nnum_digits: %d\n", num->sign, num->point_offset, num->num_digits);
 		char *str = bignum_to_string(num);
 		printf("You entered: %s\n", inp);
 		printf("I understood: %s\n", str);
+
+		/* ADD SUB
+		char *ia = malloc(1000 * sizeof(char));
+		char *ib = malloc(1000 * sizeof(char));
+		printf("a:\n");
+		scanf("%s", ia);
+		printf("b:\n");
+		scanf("%s", ib);
+		struct bignum *a = string_to_bignum(ia);
+		struct bignum *b = string_to_bignum(ib);
+		struct bignum *radd = add_unsigned(a, b);
+		struct bignum *rsub = sub_unsigned(a, b);
+		char *iadd = bignum_to_string(radd);
+		char *isub = bignum_to_string(rsub);
+		printf("add:\n%s\n", iadd);
+		printf("sub:\n%s\n", isub);
+		*/
 	}
 }
