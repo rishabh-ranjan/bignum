@@ -289,9 +289,8 @@ int mag_comp(struct bignum *a, struct bignum *b) {
 	// do not compare sizes, as leading digits may be zero
 	// avoid unsigned subtraction
 	for (int i = rwnd - 1; i >= -rofs; --i) {
-		// fprintf(stderr, "i = %d\n", i);
-		int da = get_digit(a, i);
-		int db = get_digit(b, i);
+		digit_t da = get_digit(a, i);
+		digit_t db = get_digit(b, i);
 		if (da < db) return -1;
 		if (da > db) return 1;
 	}
@@ -348,6 +347,7 @@ struct bignum *long_mul(struct bignum *a, struct bignum *b) {
  * Use long division.
  * Return NULL when b = 0.
  * TODO: free all newly malloc'ed structs
+ * TODO: report div by 0
  */
 #define PRECISION 3
 struct bignum *long_div(struct bignum *a, struct bignum *b) {
@@ -378,6 +378,7 @@ struct bignum *long_div(struct bignum *a, struct bignum *b) {
 	struct bignum *dig = bignum_alloc(1);
 	// copy of b wihtout it's point_offset
 	struct bignum *bcpy = malloc(sizeof(struct bignum));
+	bcpy->point_offset = 0;
 	bcpy->num_digits = bnd;
 	bcpy->digits = b->digits;
 	for (int ai = a->num_digits - bnd; ai >= -naz; --ai) {
@@ -394,7 +395,7 @@ struct bignum *long_div(struct bignum *a, struct bignum *b) {
 			int comp = mag_comp(tmp, rem);
 			if (comp <= 0) {
 				isub = sub_unsigned(rem, tmp);
-				if (mag_comp(isub, b) < 0) {
+				if (mag_comp(isub, bcpy) < 0) {
 					break;
 				} else {
 					lo = mid + 1;
