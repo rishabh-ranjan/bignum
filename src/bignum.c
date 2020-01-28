@@ -12,13 +12,15 @@
 // #ifdef DEBUG
 #include <stdio.h>
 // #endif
+//
+// TODO: use static to qualify some functions and global variables
 
 /* Radix for bignum representation = 1e9 */
 #define RADIX 1000000000
-// #define RADIX 10
+//#define RADIX 10
 /* Number of decimal digits per bignum digit */
 #define RNUM 9
-// #define RNUM 1
+//#define RNUM 1
 
 /* Ensure digit_t is at least 32 bits; `unsigned' is not strictly portable here. */
 typedef unsigned digit_t;
@@ -81,7 +83,7 @@ const unsigned POW10[] = {
  * Convert string to bignum.
  * Return NULL on error.
  */
-struct bignum *string_to_bignum(char *str) {
+struct bignum *string_to_bignum(const char *str) {
 	int len = strlen(str);
 	int neg = *str == MINUS_CHAR; // is it negative?
 
@@ -133,7 +135,7 @@ struct bignum *string_to_bignum(char *str) {
  */
 #define TEN 10
 #define ZERO_STRING "0"
-char *bignum_to_string(struct bignum *num) {
+char *bignum_to_string(const struct bignum *num) {
 	int ofsdi = num->point_offset - 1; // offset digit index; . is to its left
 	int fnzdi; // first non-zero digit index
 	for (fnzdi = 0; fnzdi < num->num_digits && !num->digits[fnzdi]; ++fnzdi);
@@ -209,7 +211,7 @@ char *bignum_to_string(struct bignum *num) {
  * Position 0 is just left of point.
  * +ve, -ve positions even outside those stored are supported.
  */
-digit_t get_digit(struct bignum *num, int ind) {
+digit_t get_digit(const struct bignum *num, int ind) {
 	int di = ind + num->point_offset;
 	if (di < 0 || di >= num->num_digits) return 0;
 	return num->digits[di];
@@ -222,7 +224,7 @@ digit_t get_digit(struct bignum *num, int ind) {
  * todos apply to other functions as well.
  */
 #define max(x, y) ((x) > (y) ? (x) : (y))
-struct bignum *add_unsigned(struct bignum *a, struct bignum *b) {
+struct bignum *add_unsigned(const struct bignum *a, const struct bignum *b) {
 	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
 	// resulting number of digits in whole number part
 	int rwnd = 1 + max(a->num_digits - a->point_offset, b->num_digits - b->point_offset);
@@ -247,7 +249,7 @@ struct bignum *add_unsigned(struct bignum *a, struct bignum *b) {
  * Use for a >= b.
  * Return a - b.
  */
-struct bignum *sub_unsigned(struct bignum *a, struct bignum *b) {
+struct bignum *sub_unsigned(const struct bignum *a, const struct bignum *b) {
 	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
 	// resulting number of digits in whole number part, assuming a >= b
 	int rwnd = a->num_digits - a->point_offset;
@@ -281,7 +283,7 @@ struct bignum *sub_unsigned(struct bignum *a, struct bignum *b) {
 /*
  * Return -ve if |a| < |b|, 0 if |a| == |b|, +ve if |a| > |b|.
  */
-int mag_comp(struct bignum *a, struct bignum *b) {
+int mag_comp(const struct bignum *a, const struct bignum *b) {
 	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
 	// resulting number of digits in whole number part
 	int rwnd = max(a->num_digits - a->point_offset, b->num_digits - b->point_offset);
@@ -301,7 +303,7 @@ int mag_comp(struct bignum *a, struct bignum *b) {
 /*
  * Signed add if `sub' = 0, signed sub if `sub' = 1.
  */
-struct bignum *addsub_signed(struct bignum *a, struct bignum *b, int sub) {
+struct bignum *addsub_signed(const struct bignum *a, const struct bignum *b, int sub) {
 	int sa = a->sign;
 	int sb = b->sign ^ sub;
 	struct bignum *ret;
@@ -325,7 +327,7 @@ struct bignum *addsub_signed(struct bignum *a, struct bignum *b, int sub) {
  * Use long multiplication.
  */
 typedef unsigned long long lldigit_t;
-struct bignum *long_mul(struct bignum *a, struct bignum *b) {
+struct bignum *long_mul(const struct bignum *a, const struct bignum *b) {
 	struct bignum *ret = bignum_alloc(a->num_digits + b->num_digits);
 	ret->sign = a->sign ^ b->sign;
 	ret->point_offset = a->point_offset + b->point_offset;
@@ -350,7 +352,7 @@ struct bignum *long_mul(struct bignum *a, struct bignum *b) {
  * TODO: report div by 0
  */
 #define PRECISION 3
-struct bignum *long_div(struct bignum *a, struct bignum *b) {
+struct bignum *long_div(const struct bignum *a, const struct bignum *b) {
 	int lzb; // number of leading zeroes in b
 	for (lzb = 0; lzb < b->num_digits && !b->digits[b->num_digits - 1 - lzb]; ++lzb);
 	if (lzb == b->num_digits) {
@@ -367,6 +369,7 @@ struct bignum *long_div(struct bignum *a, struct bignum *b) {
 	ret->point_offset = PRECISION;
 	// intermediate remainder at each step
 	struct bignum *rem = bignum_alloc(a->num_digits + naz + 1);
+	// initialize remainder
 	for (int i = 0; i < a->num_digits; ++i) {
 		rem->digits[naz + i] = a->digits[i];
 	}
@@ -385,6 +388,7 @@ struct bignum *long_div(struct bignum *a, struct bignum *b) {
 		// expose a new digit of rem
 		--rem->digits;
 		// binary search next digit of quotient
+		// TODO: make it digit_t
 		int lo = 0, hi = RADIX - 1;	
 		int mid;
 		struct bignum *isub; // intermediate subtraction result
@@ -413,6 +417,87 @@ struct bignum *long_div(struct bignum *a, struct bignum *b) {
 	return ret;
 }
 
+/*
+ * Return sqrt a to `PRECISION' bignum digits of precision.
+ * Ignore sign.
+ */
+// TODO: there is too much memory leak as of now!
+// TODO: error checking
+// TODO: can bignum_to_string handle num_digits = 0?
+// does .00000000000000000000000 break it?
+struct bignum *sqrt_unsigned(struct bignum *a) {
+	// sz is number of digits in a after adding zeroes left and right
+	// to get paired digits that give required precision
+	// sz is even
+	int wnd = a->num_digits - a->point_offset; // digits in whole number part
+	int sz = wnd + (wnd & 1) + PRECISION*2;
+	struct bignum *ret = bignum_alloc(sz/2); // answer
+	// hide all digits of ret
+	ret->digits += sz/2;
+	ret->num_digits = 0;
+	struct bignum *rem = bignum_alloc(sz + 1); // intermediate remainder
+	int naz = PRECISION*2 - a->point_offset; // number of zeroes added for precision
+	// initialize remainder
+	for (int i = 0; i < a->num_digits; ++i) {
+		rem->digits[i + naz] = a->digits[i];
+	}
+	// hide all digits of rem
+	rem->digits += sz;
+	rem->num_digits = 1;
+	struct bignum *dig = bignum_alloc(1); // placeholder for small numbers
+	struct bignum *rad = bignum_alloc(2); // bignum representation of RADIX
+	rad->digits[1] = 1;
+	for (int i = 0; i < sz/2; ++i) { // an iteration for each digit in ret
+		// expose 2 digits of rem
+		rem->digits -= 2;
+		rem->num_digits += 2;
+		// binary search the digit
+		digit_t lo = 0, hi = RADIX - 1;
+		digit_t el; // will store max x s.t. (2*ret*RADIX + x)*x <= rem
+		struct bignum *tmpel; // store tmp for the el
+		while (hi >= lo) {
+			digit_t mid = (lo + hi)/2;
+			dig->digits[0] = 2;
+			struct bignum *tmp1 = long_mul(dig, ret);
+			struct bignum *tmp2 = long_mul(rad, tmp1);
+			dig->digits[0] = mid;
+			struct bignum *tmp3 = add_unsigned(dig, tmp2);
+			struct bignum *tmp = long_mul(dig, tmp3);
+			// final result: tmp = (2*ret*RADIX + mid)*mid
+
+			/*
+			printf("ret:\n%s\n", bignum_to_string(ret));
+			printf("mid:\n%s\n", bignum_to_string(dig));
+			printf("tmp:\n%s\n", bignum_to_string(tmp));
+			printf("rem:\n%s\n", bignum_to_string(rem));
+			*/
+
+			int comp = mag_comp(tmp, rem);
+			if (comp <= 0) {
+				el = mid;
+				tmpel = bignum_alloc(tmp->num_digits);
+				for (int j = 0; j < tmp->num_digits; ++j) {
+					tmpel->digits[j] = tmp->digits[j];
+				}
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		// add el to result
+		--ret->digits;
+		++ret->num_digits;
+		ret->digits[0] = el;
+		// update the remainder by overwriting with rem - tmpel
+		struct bignum *sub = sub_unsigned(rem, tmpel);
+		for (int j = 0; j < rem->num_digits; ++j) {
+			rem->digits[j] = sub->digits[j];
+		}
+	}
+	ret->point_offset = PRECISION;
+	return ret;
+}
+
 int main() {
 	while (1) {
 		/* PARSE
@@ -429,13 +514,13 @@ int main() {
 
 #if 1
 		char *ia = malloc(1000 * sizeof(char));
-		char *ib = malloc(1000 * sizeof(char));
+		//char *ib = malloc(1000 * sizeof(char));
 		printf("a:\n");
 		scanf("%s", ia);
-		printf("b:\n");
-		scanf("%s", ib);
+		//printf("b:\n");
+		//scanf("%s", ib);
 		struct bignum *a = string_to_bignum(ia);
-		struct bignum *b = string_to_bignum(ib);
+		//struct bignum *b = string_to_bignum(ib);
 		/*
 		struct bignum *radd = add_unsigned(a, b);
 		struct bignum *rsub = sub_unsigned(a, b);
@@ -448,11 +533,13 @@ int main() {
 		printf("sig:\n%s\n", isig);
 		struct bignum *rmul = long_mul(a, b);
 		char *imul = bignum_to_string(rmul);
-		printf("mul:\n%s\n", imul);
-		*/
 		struct bignum *rdiv = long_div(a, b);
 		char *idiv = bignum_to_string(rdiv);
 		printf("div:\n%s\n", idiv);
+		*/
+		struct bignum *rsqrt = sqrt_unsigned(a);
+		char *isqrt = bignum_to_string(rsqrt);
+		printf("sqrt:\n%s\n", isqrt);
 #endif
 	}
 }
