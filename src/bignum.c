@@ -16,11 +16,11 @@
 // TODO: use static to qualify some functions and global variables
 
 /* Radix for bignum representation = 1e9 */
-#define RADIX 1000000000
-//#define RADIX 10
+//#define RADIX 1000000000
+#define RADIX 10
 /* Number of decimal digits per bignum digit */
-#define RNUM 9
-//#define RNUM 1
+//#define RNUM 9
+#define RNUM 1
 
 /* Ensure digit_t is at least 32 bits; `unsigned' is not strictly portable here. */
 typedef unsigned digit_t;
@@ -60,6 +60,20 @@ struct bignum *bignum_alloc(int num_digits) {
 void bignum_free(struct bignum *ptr) {
 	free(ptr->digits);
 	free(ptr);
+}
+
+/*
+ * Clone a bignum.
+ * TODO: Make rem in div and sqrt use this.
+ */
+struct bignum *clone(struct bignum *num) {
+	struct bignum *ret = bignum_alloc(num->num_digits);
+	ret->sign = num->sign;
+	ret->point_offset = num->point_offset;
+	for (int i = 0; i < num->num_digits; ++i) {
+		ret->digits[i] = num->digits[i];
+	}
+	return ret;
 }
 
 const unsigned POW10[] = {
@@ -498,6 +512,45 @@ struct bignum *sqrt_unsigned(struct bignum *a) {
 	return ret;
 }
 
+/*
+ * Raise to small exponents.
+ * Return a ^ b.
+ * Ignore sign.
+ */
+// TODO: why does 1 ^ 10000 in base 10 take so much time
+struct bignum *pow_small(struct bignum *a, int b) {
+	// TODO: make a global single digit bignum (?)
+	// TODO: replace raw instantiations to use bignum_alloc
+	struct bignum *ret = bignum_alloc(1);
+	ret->digits[0] = 1;
+	struct bignum *tmp = clone(a);
+	while (b) {
+		if (b & 1) {
+			ret = long_mul(ret, tmp);
+		}
+		tmp = long_mul(tmp, tmp);
+		b /= 2;
+	}
+	return ret;
+}
+
+/*
+ * Raise to arbitrary integer exponents (i.e. ignoring point_offset).
+ * Return a ^ b.
+ * Ignore sign.
+ */
+struct bignum *pow_uint(struct bignum *a, struct bignum *b) {
+	struct bignum *ret = bignum_alloc(1);
+	ret->digits[0] = 1;
+	struct bignum *acc = clone(a);
+	for (int i = 0; i < b->num_digits; ++i) {
+		struct bignum *tmp = pow_small(acc, b->digits[i]);
+		ret = long_mul(ret, tmp);
+		acc = pow_small(acc, RADIX);
+	}
+	return ret;
+}
+
 int main() {
 	while (1) {
 		/* PARSE
@@ -514,13 +567,13 @@ int main() {
 
 #if 1
 		char *ia = malloc(1000 * sizeof(char));
-		//char *ib = malloc(1000 * sizeof(char));
+		char *ib = malloc(1000 * sizeof(char));
 		printf("a:\n");
 		scanf("%s", ia);
-		//printf("b:\n");
-		//scanf("%s", ib);
+		printf("b:\n");
+		scanf("%s", ib);
 		struct bignum *a = string_to_bignum(ia);
-		//struct bignum *b = string_to_bignum(ib);
+		struct bignum *b = string_to_bignum(ib);
 		/*
 		struct bignum *radd = add_unsigned(a, b);
 		struct bignum *rsub = sub_unsigned(a, b);
@@ -536,10 +589,13 @@ int main() {
 		struct bignum *rdiv = long_div(a, b);
 		char *idiv = bignum_to_string(rdiv);
 		printf("div:\n%s\n", idiv);
-		*/
 		struct bignum *rsqrt = sqrt_unsigned(a);
 		char *isqrt = bignum_to_string(rsqrt);
 		printf("sqrt:\n%s\n", isqrt);
+		*/
+		struct bignum *rpow = pow_uint(a, b);
+		char *ipow = bignum_to_string(rpow);
+		printf("pow:\n%s\n", ipow);
 #endif
 	}
 }
