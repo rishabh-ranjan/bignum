@@ -365,7 +365,7 @@ struct bignum *long_mul(const struct bignum *a, const struct bignum *b) {
  * TODO: free all newly malloc'ed structs
  * TODO: report div by 0
  */
-#define PRECISION 3
+#define PRECISION 10
 struct bignum *long_div(const struct bignum *a, const struct bignum *b) {
 	int lzb; // number of leading zeroes in b
 	for (lzb = 0; lzb < b->num_digits && !b->digits[b->num_digits - 1 - lzb]; ++lzb);
@@ -515,7 +515,7 @@ struct bignum *sqrt_unsigned(struct bignum *a) {
 /*
  * Raise to small exponents.
  * Return a ^ b.
- * Ignore sign.
+ * Ignore sign of a, b expected to be non-negative.
  */
 // TODO: why does 1 ^ 10000 in base 10 take so much time
 struct bignum *pow_small(struct bignum *a, int b) {
@@ -537,7 +537,7 @@ struct bignum *pow_small(struct bignum *a, int b) {
 /*
  * Raise to arbitrary integer exponents (i.e. ignoring point_offset).
  * Return a ^ b.
- * Ignore sign.
+ * Ignore signs of a and b.
  */
 struct bignum *pow_uint(struct bignum *a, struct bignum *b) {
 	struct bignum *ret = bignum_alloc(1);
@@ -547,6 +547,60 @@ struct bignum *pow_uint(struct bignum *a, struct bignum *b) {
 		struct bignum *tmp = pow_small(acc, b->digits[i]);
 		ret = long_mul(ret, tmp);
 		acc = pow_small(acc, RADIX);
+	}
+	return ret;
+}
+
+/*
+ * Return bth root of a.
+ * Ignore signs of a and b.
+ */
+// number of bits after point in 1/b to be considered
+// TODO: analyze error bounds
+#define ITERATIONS 51
+struct bignum *root_small(struct bignum *a, int b) {
+	double c = 1.0L/b;
+	struct bignum *ret = bignum_alloc(1);
+	ret->digits[0] = 1;
+	struct bignum *tmp = clone(a);
+	for (int i = 0; i < ITERATIONS; ++i) {
+		tmp = sqrt_unsigned(tmp);
+		c *= 2;
+		int d = (int)c;
+		if (d) {
+			ret = long_mul(ret, tmp);
+		}
+		c -= d;
+	}
+	return ret;
+}
+
+/*
+ * Raise power to arbitary exponents.
+ * Return a ^ b.
+ * Signs of a and b ignored.
+ */
+// NOTE: this does not give exact digits.
+// eg. 32 ^ 0.2 gives 1.999... not 2
+struct bignum *pow_unsigned(struct bignum *a, struct bignum *b) {
+	struct bignum *ret = pow_uint(a, b);
+	for (int i = 0; i < b->point_offset; ++i) {
+		ret = root_small(ret, b);
+	}
+	return ret;
+}
+
+/*
+ * Raise power to signed exponents.
+ * Return a ^ b.
+ * Sign of a is ignored.
+ */
+struct bignum *pow_signed(struct bignum *a, struct bignum *b) {
+	struct bignum *ret = pow_unsigned(a, b);
+	if (b->sign) {
+		struct bignum *dig = bignum_alloc(1);
+		dig->digits[0] = 1;
+		ret = long_div(dig, ret);
 	}
 	return ret;
 }
@@ -567,13 +621,16 @@ int main() {
 
 #if 1
 		char *ia = malloc(1000 * sizeof(char));
-		char *ib = malloc(1000 * sizeof(char));
+		//char *ib = malloc(1000 * sizeof(char));
+		int c;
 		printf("a:\n");
 		scanf("%s", ia);
-		printf("b:\n");
-		scanf("%s", ib);
+		//printf("b:\n");
+		//scanf("%s", ib);
+		printf("c:\n");
+		scanf("%d", &c);
 		struct bignum *a = string_to_bignum(ia);
-		struct bignum *b = string_to_bignum(ib);
+		//struct bignum *b = string_to_bignum(ib);
 		/*
 		struct bignum *radd = add_unsigned(a, b);
 		struct bignum *rsub = sub_unsigned(a, b);
@@ -592,10 +649,13 @@ int main() {
 		struct bignum *rsqrt = sqrt_unsigned(a);
 		char *isqrt = bignum_to_string(rsqrt);
 		printf("sqrt:\n%s\n", isqrt);
-		*/
 		struct bignum *rpow = pow_uint(a, b);
 		char *ipow = bignum_to_string(rpow);
 		printf("pow:\n%s\n", ipow);
+		*/
+		struct bignum *rroot = root_small(a, c);
+		char *iroot = bignum_to_string(rroot);
+		printf("root:\n%s\n", iroot);
 #endif
 	}
 }
