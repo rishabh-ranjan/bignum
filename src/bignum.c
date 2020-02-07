@@ -11,6 +11,8 @@
 #include <stdio.h>
 #endif
 
+#include "bignum.h"
+
 /* Radix for bignum representation = 1e9 */
 #ifdef DEBUG
 #define RADIX 10
@@ -671,8 +673,8 @@ static struct bignum *pow_sfrac(const struct bignum *a, double b) {
  * Also after 9 digits after point, as ignored by this function,
  * the exponent barely makes a difference.
  */
-struct bignum *long_pow(const struct bignum *a, struct bignum *b) {
-	struct bignum *c; // the integer part of b
+struct bignum *long_pow(const struct bignum *a, const struct bignum *b) {
+	const struct bignum *c; // the integer part of b
 	double d; // the fraction part of b
 	// extract integer and fractional parts
 	// function can be optimized for c = 0 or d = 0 cases
