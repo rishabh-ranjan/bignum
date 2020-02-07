@@ -1,33 +1,42 @@
 /*
  * bignum.c
  * author: Rishabh Ranjan
- * month: January, 2020
+ * January, 2020
  */
 
 #include <stdlib.h>
 #include <string.h>
 
-// #define DEBUG
-
-// #ifdef DEBUG
+#ifdef DEBUG
 #include <stdio.h>
-// #endif
-//
-// TODO: use static to qualify some functions and global variables
+#endif
 
 /* Radix for bignum representation = 1e9 */
+#ifdef DEBUG
+#define RADIX 10
+#else
 #define RADIX 1000000000
-//#define RADIX 10
-/* Number of decimal digits per bignum digit */
-#define RNUM 9
-//#define RNUM 1
+#endif
 
-/* Ensure digit_t is at least 32 bits; `unsigned' is not strictly portable here. */
+/* Number of decimal digits per bignum digit */
+#ifdef DEBUG
+#define RNUM 1
+#else
+#define RNUM 9
+#endif
+
+/*
+ * Ensure digit_t is at least 32 bits.
+ * `unsigned' is not strictly portable here,
+ * but will work on most modern machines.
+ */
 typedef unsigned digit_t;
 
 /*
  * Represents arbitrary precision real number.
  * Uses sign-magnitude form.
+ * The implementation is such that bignums are immutable,
+ * i.e. functions should not change bignum parameters
  */
 struct bignum {
 	int sign; /* +ve for -ve bignum, 0 for +ve, any for 0 */
@@ -39,15 +48,15 @@ struct bignum {
 /*
  * Allocate a bignum with `num_digits' digits.
  * Also set its `num_digits' field.
- * Digits are initialized to 0.
+ * Digits are initialized to 0 (needed in some functions).
  * sign and point_offset are initialized to 0.
- * Return NULL if allocation failed.
+ * Exit with failure if malloc fails.
  */
-struct bignum *bignum_alloc(int num_digits) {
+static struct bignum *bignum_alloc(int num_digits) {
 	struct bignum *ptr = malloc(sizeof(struct bignum));
 	if (!ptr) return NULL;
 	ptr->digits = calloc(num_digits, sizeof(digit_t));
-	if (!ptr->digits) return NULL;
+	if (!ptr->digits) exit(EXIT_FAILURE);
 	ptr->num_digits = num_digits;
 	ptr->sign = 0;
 	ptr->point_offset = 0;
@@ -64,9 +73,8 @@ void bignum_free(struct bignum *ptr) {
 
 /*
  * Clone a bignum.
- * TODO: Make rem in div and sqrt use this.
  */
-struct bignum *clone(struct bignum *num) {
+struct bignum *clone(const struct bignum *num) {
 	struct bignum *ret = bignum_alloc(num->num_digits);
 	ret->sign = num->sign;
 	ret->point_offset = num->point_offset;
@@ -76,7 +84,16 @@ struct bignum *clone(struct bignum *num) {
 	return ret;
 }
 
-const unsigned POW10[] = {
+/*
+ * Returns absolute value of num.
+ */
+struct bignum *bignum_abs(struct bignum *num) {
+	struct bignum *ret = clone(num);
+	ret->sign = 0;
+	return ret;
+}
+
+static const unsigned POW10[] = {
 	1,
 	10,
 	100,
@@ -234,7 +251,6 @@ digit_t get_digit(const struct bignum *num, int ind) {
 /*
  * Add ignoring sign.
  * TODO: learn how to free returned bignum later.
- * TODO: check error condition of bignum_malloc.
  * todos apply to other functions as well.
  */
 #define max(x, y) ((x) > (y) ? (x) : (y))
@@ -260,7 +276,7 @@ struct bignum *add_unsigned(const struct bignum *a, const struct bignum *b) {
 
 /*
  * Subtract ignoring sign.
- * Use for a >= b.
+ * Use only for a >= b.
  * Return a - b.
  */
 struct bignum *sub_unsigned(const struct bignum *a, const struct bignum *b) {
@@ -313,7 +329,6 @@ int mag_comp(const struct bignum *a, const struct bignum *b) {
 	return 0;
 }
 
-// TODO: explore const parameters
 /*
  * Signed add if `sub' = 0, signed sub if `sub' = 1.
  */
@@ -358,14 +373,13 @@ struct bignum *long_mul(const struct bignum *a, const struct bignum *b) {
 	return ret;
 }
 
+// number of bignum digits after point to which div and sqrt are computed
+#define PRECISION 5
 /*
  * Return signed a/b to `PRECISION' bignum digits of precision after point.
  * Use long division.
  * Return NULL when b = 0.
- * TODO: free all newly malloc'ed structs
- * TODO: report div by 0
  */
-#define PRECISION 20
 struct bignum *long_div(const struct bignum *a, const struct bignum *b) {
 	int lzb; // number of leading zeroes in b
 	for (lzb = 0; lzb < b->num_digits && !b->digits[b->num_digits - 1 - lzb]; ++lzb);
@@ -403,8 +417,8 @@ struct bignum *long_div(const struct bignum *a, const struct bignum *b) {
 		--rem->digits;
 		// binary search next digit of quotient
 		// TODO: make it digit_t
-		int lo = 0, hi = RADIX - 1;	
-		int mid;
+		digit_t lo = 0, hi = RADIX - 1;	
+		digit_t mid;
 		struct bignum *isub; // intermediate subtraction result
 		while (hi >= lo) {
 			mid = (lo + hi)/2;
@@ -428,20 +442,20 @@ struct bignum *long_div(const struct bignum *a, const struct bignum *b) {
 			rem->digits[ri] = isub->digits[ri];
 		}
 	}
+	free(bcpy);
+	bignum_free(dig);
+	bignum_free(rem);
 	return ret;
 }
 
-/*
- * Return sqrt a to `PRECISION' bignum digits of precision.
- * Ignore sign.
- */
-// TODO: there is too much memory leak as of now!
 // TODO: error checking
 // TODO: can bignum_to_string handle num_digits = 0?
-// does .00000000000000000000000 break it?
-// TODO: make precision a parameter
-struct bignum *trim_fraction(struct bignum *num, int precision) {
-	fprintf(stderr, "trimming");
+// TODO: does .00000000000000000000000 break it?
+
+/*
+ * Trims the bignum to `precision' bignum digits of precision.
+ */
+struct bignum *trim_fraction(const struct bignum *num, int precision) {
 	struct bignum *ret = bignum_alloc(num->num_digits - num->point_offset + precision);
 	ret->sign = num->sign;
 	ret->point_offset = precision;
@@ -451,8 +465,12 @@ struct bignum *trim_fraction(struct bignum *num, int precision) {
 	return ret;
 }
 
-struct bignum *sqrt_unsigned(struct bignum *a) {
-	fprintf(stderr, "sqrt_u <- %s\n", bignum_to_string(a));
+/*
+ * Return sqrt a to `PRECISION' bignum digits of precision.
+ * Ignore sign.
+ */
+struct bignum *sqrt_unsigned(const struct bignum *a) {
+	// this prevents naz (defined below) from being negative.
 	if (a->point_offset > PRECISION*2) {
 		trim_fraction(a, PRECISION*2);
 	}
@@ -484,7 +502,7 @@ struct bignum *sqrt_unsigned(struct bignum *a) {
 		// binary search the digit
 		digit_t lo = 0, hi = RADIX - 1;
 		digit_t el; // will store max x s.t. (2*ret*RADIX + x)*x <= rem
-		struct bignum *tmpel; // store tmp for the el
+		struct bignum *tmpel = NULL; // store tmp for the el
 		while (hi >= lo) {
 			digit_t mid = (lo + hi)/2;
 			dig->digits[0] = 2;
@@ -495,16 +513,10 @@ struct bignum *sqrt_unsigned(struct bignum *a) {
 			struct bignum *tmp = long_mul(dig, tmp3);
 			// final result: tmp = (2*ret*RADIX + mid)*mid
 
-			/*
-			printf("ret:\n%s\n", bignum_to_string(ret));
-			printf("mid:\n%s\n", bignum_to_string(dig));
-			printf("tmp:\n%s\n", bignum_to_string(tmp));
-			printf("rem:\n%s\n", bignum_to_string(rem));
-			*/
-
 			int comp = mag_comp(tmp, rem);
 			if (comp <= 0) {
 				el = mid;
+				if (tmpel != NULL) bignum_free(tmpel);
 				tmpel = bignum_alloc(tmp->num_digits);
 				for (int j = 0; j < tmp->num_digits; ++j) {
 					tmpel->digits[j] = tmp->digits[j];
@@ -513,6 +525,11 @@ struct bignum *sqrt_unsigned(struct bignum *a) {
 			} else {
 				hi = mid - 1;
 			}
+
+			bignum_free(tmp1);
+			bignum_free(tmp2);
+			bignum_free(tmp3);
+			bignum_free(tmp);
 		}
 		// add el to result
 		--ret->digits;
@@ -523,8 +540,13 @@ struct bignum *sqrt_unsigned(struct bignum *a) {
 		for (int j = 0; j < rem->num_digits; ++j) {
 			rem->digits[j] = sub->digits[j];
 		}
+		bignum_free(sub);
+		bignum_free(tmpel);
 	}
 	ret->point_offset = PRECISION;
+	bignum_free(rad);
+	bignum_free(dig);
+	bignum_free(rem);
 	return ret;
 }
 
@@ -533,23 +555,22 @@ struct bignum *sqrt_unsigned(struct bignum *a) {
  * Return a ^ b.
  * Ignore sign of a, b expected to be non-negative.
  */
-// TODO: why does 1 ^ 10000 in base 10 take so much time
-struct bignum *pow_small(struct bignum *a, int b) {
-	// TODO: make a global single digit bignum (?)
-	// TODO: replace raw instantiations to use bignum_alloc
-	fprintf(stderr, "obo");
+struct bignum *pow_small(const struct bignum *a, int b) {
 	struct bignum *ret = bignum_alloc(1);
 	ret->digits[0] = 1;
 	struct bignum *tmp = clone(a);
 	while (b) {
-		fprintf(stderr, "b = %d\n", b);
 		if (b & 1) {
+			struct bignum *retcpy = ret;
 			ret = long_mul(ret, tmp);
+			bignum_free(retcpy);
 		}
+		struct bignum *tmpcpy = tmp;
 		tmp = long_mul(tmp, tmp);
+		bignum_free(tmpcpy);
 		b /= 2;
 	}
-	fprintf(stderr, "tkt");
+	bignum_free(tmp);
 	return ret;
 }
 
@@ -558,18 +579,23 @@ struct bignum *pow_small(struct bignum *a, int b) {
  * Return a ^ b.
  * Ignore signs of a and b.
  */
-struct bignum *pow_uint(struct bignum *a, struct bignum *b) {
-	fprintf(stderr, "tada");
+struct bignum *pow_uint(const struct bignum *a, const struct bignum *b) {
 	struct bignum *ret = bignum_alloc(1);
 	ret->digits[0] = 1;
 	struct bignum *acc = clone(a);
 	for (int i = 0; i < b->num_digits; ++i) {
 		struct bignum *tmp = pow_small(acc, b->digits[i]);
+		struct bignum *retcpy = ret;
 		ret = long_mul(ret, tmp);
+		bignum_free(retcpy);
 		if (i != b->num_digits - 1) {
+			struct bignum *acccpy = acc;
 			acc = pow_small(acc, RADIX);
+			bignum_free(acc);
 		}
+		bignum_free(tmp);
 	}
+	bignum_free(acc);
 	return ret;
 }
 
@@ -579,20 +605,24 @@ struct bignum *pow_uint(struct bignum *a, struct bignum *b) {
  * Ignore signs of a and b.
  * Works for 0 <= b < 1.
  */
-struct bignum *pow_ufrac(struct bignum *a, double b) {
-	fprintf(stderr, "b = %lf\n", b);
+struct bignum *pow_ufrac(const struct bignum *a, double b) {
 	struct bignum *ret = bignum_alloc(1);
 	ret->digits[0] = 1;
 	struct bignum *tmp = clone(a);
 	while (b) {
+		struct bignum *tmpcpy = tmp;
 		tmp = sqrt_unsigned(tmp);
+		bignum_free(tmpcpy);
 		b *= 2;
 		int d = (int)b;
 		if (d) {
+			struct bignum *retcpy = ret;
 			ret = long_mul(ret, tmp);
+			bignum_free(retcpy);
 		}
 		b -= d;
 	}
+	bignum_free(tmp);
 	return ret;
 }
 
@@ -601,12 +631,15 @@ struct bignum *pow_ufrac(struct bignum *a, double b) {
  * Return a ^ b.
  * Sign of a is ignored.
  */
-struct bignum *pow_sint(struct bignum *a, struct bignum *b) {
+struct bignum *pow_sint(const struct bignum *a, const struct bignum *b) {
 	struct bignum *ret = pow_uint(a, b);
 	if (b->sign) {
 		struct bignum *dig = bignum_alloc(1);
 		dig->digits[0] = 1;
+		struct bignum *retcpy = ret;
 		ret = long_div(dig, ret);
+		bignum_free(retcpy);
+		bignum_free(dig);
 	}
 	return ret;
 }
@@ -621,7 +654,10 @@ struct bignum *pow_sfrac(struct bignum *a, double b) {
 	if (b < 0) {
 		struct bignum *dig = bignum_alloc(1);
 		dig->digits[0] = 1;
+		struct bignum *retcpy = ret;
 		ret = long_div(dig, ret);
+		bignum_free(retcpy);
+		bignum_free(dig);
 	}
 	return ret;
 }
@@ -629,11 +665,17 @@ struct bignum *pow_sfrac(struct bignum *a, double b) {
 /*
  * Raise to arbitrary bignum powers.
  * Only one bignum digit to the right of point is considered.
+ * This is because simple implementations of arbitrary precision
+ * to the right may take unreasonable amount of memory for intermediates
+ * even when final answer is small enough.
+ * Also after 9 digits after point, as ignored by this function,
+ * the exponent barely makes a difference.
  */
 struct bignum *long_pow(struct bignum *a, struct bignum *b) {
-	struct bignum *c;
-	double d;
+	struct bignum *c; // the integer part of b
+	double d; // the fraction part of b
 	// extract integer and fractional parts
+	// function can be optimized for c = 0 or d = 0 cases
 	if (b->point_offset == 0) {
 		c = b;
 		d = 0;
@@ -642,18 +684,14 @@ struct bignum *long_pow(struct bignum *a, struct bignum *b) {
 		d = (double)b->digits[b->point_offset - 1] / RADIX;
 		if (b->sign) d = -d;
 	}
-	fprintf(stderr, "here");
-	fprintf(stderr, "c = %s\n", bignum_to_string(c));
 	struct bignum *tmp1 = pow_sint(a, c);
-	fprintf(stderr, "woo");
-	// TODO: can be optimized for when d = 0
 	struct bignum *tmp2 = pow_sfrac(a, d);
-	fprintf(stderr, "tmp1: %s\n", bignum_to_string(tmp1));
-	fprintf(stderr, "tmp2: %s\n", bignum_to_string(tmp2));
 	struct bignum *ret = long_mul(tmp1, tmp2);
+	bignum_free(tmp1);
+	bignum_free(tmp2);
 	return ret;
 }
-
+#if 0
 int main() {
 	while (1) {
 		/* PARSE
@@ -724,3 +762,4 @@ int main() {
 #endif
 	}
 }
+#endif
