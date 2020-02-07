@@ -87,7 +87,7 @@ struct bignum *clone(const struct bignum *num) {
 /*
  * Returns absolute value of num.
  */
-struct bignum *bignum_abs(struct bignum *num) {
+struct bignum *bignum_abs(const struct bignum *num) {
 	struct bignum *ret = clone(num);
 	ret->sign = 0;
 	return ret;
@@ -242,7 +242,7 @@ char *bignum_to_string(const struct bignum *num) {
  * Position 0 is just left of point.
  * +ve, -ve positions even outside those stored are supported.
  */
-digit_t get_digit(const struct bignum *num, int ind) {
+static digit_t get_digit(const struct bignum *num, int ind) {
 	int di = ind + num->point_offset;
 	if (di < 0 || di >= num->num_digits) return 0;
 	return num->digits[di];
@@ -254,7 +254,7 @@ digit_t get_digit(const struct bignum *num, int ind) {
  * todos apply to other functions as well.
  */
 #define max(x, y) ((x) > (y) ? (x) : (y))
-struct bignum *add_unsigned(const struct bignum *a, const struct bignum *b) {
+static struct bignum *add_unsigned(const struct bignum *a, const struct bignum *b) {
 	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
 	// resulting number of digits in whole number part
 	int rwnd = 1 + max(a->num_digits - a->point_offset, b->num_digits - b->point_offset);
@@ -279,7 +279,7 @@ struct bignum *add_unsigned(const struct bignum *a, const struct bignum *b) {
  * Use only for a >= b.
  * Return a - b.
  */
-struct bignum *sub_unsigned(const struct bignum *a, const struct bignum *b) {
+static struct bignum *sub_unsigned(const struct bignum *a, const struct bignum *b) {
 	int rofs = max(a->point_offset, b->point_offset); // resulting point offset
 	// resulting number of digits in whole number part, assuming a >= b
 	int rwnd = a->num_digits - a->point_offset;
@@ -455,7 +455,7 @@ struct bignum *long_div(const struct bignum *a, const struct bignum *b) {
 /*
  * Trims the bignum to `precision' bignum digits of precision.
  */
-struct bignum *trim_fraction(const struct bignum *num, int precision) {
+static struct bignum *trim_fraction(const struct bignum *num, int precision) {
 	struct bignum *ret = bignum_alloc(num->num_digits - num->point_offset + precision);
 	ret->sign = num->sign;
 	ret->point_offset = precision;
@@ -555,7 +555,7 @@ struct bignum *sqrt_unsigned(const struct bignum *a) {
  * Return a ^ b.
  * Ignore sign of a, b expected to be non-negative.
  */
-struct bignum *pow_small(const struct bignum *a, int b) {
+static struct bignum *pow_small(const struct bignum *a, int b) {
 	struct bignum *ret = bignum_alloc(1);
 	ret->digits[0] = 1;
 	struct bignum *tmp = clone(a);
@@ -579,7 +579,7 @@ struct bignum *pow_small(const struct bignum *a, int b) {
  * Return a ^ b.
  * Ignore signs of a and b.
  */
-struct bignum *pow_uint(const struct bignum *a, const struct bignum *b) {
+static struct bignum *pow_uint(const struct bignum *a, const struct bignum *b) {
 	struct bignum *ret = bignum_alloc(1);
 	ret->digits[0] = 1;
 	struct bignum *acc = clone(a);
@@ -605,7 +605,7 @@ struct bignum *pow_uint(const struct bignum *a, const struct bignum *b) {
  * Ignore signs of a and b.
  * Works for 0 <= b < 1.
  */
-struct bignum *pow_ufrac(const struct bignum *a, double b) {
+static struct bignum *pow_ufrac(const struct bignum *a, double b) {
 	struct bignum *ret = bignum_alloc(1);
 	ret->digits[0] = 1;
 	struct bignum *tmp = clone(a);
@@ -631,7 +631,7 @@ struct bignum *pow_ufrac(const struct bignum *a, double b) {
  * Return a ^ b.
  * Sign of a is ignored.
  */
-struct bignum *pow_sint(const struct bignum *a, const struct bignum *b) {
+static struct bignum *pow_sint(const struct bignum *a, const struct bignum *b) {
 	struct bignum *ret = pow_uint(a, b);
 	if (b->sign) {
 		struct bignum *dig = bignum_alloc(1);
@@ -649,7 +649,7 @@ struct bignum *pow_sint(const struct bignum *a, const struct bignum *b) {
  * Return a ^ b.
  * Sign of a is ignored.
  */
-struct bignum *pow_sfrac(struct bignum *a, double b) {
+static struct bignum *pow_sfrac(const struct bignum *a, double b) {
 	struct bignum *ret = pow_ufrac(a, b < 0.0 ? -b : b);
 	if (b < 0) {
 		struct bignum *dig = bignum_alloc(1);
@@ -671,7 +671,7 @@ struct bignum *pow_sfrac(struct bignum *a, double b) {
  * Also after 9 digits after point, as ignored by this function,
  * the exponent barely makes a difference.
  */
-struct bignum *long_pow(struct bignum *a, struct bignum *b) {
+struct bignum *long_pow(const struct bignum *a, struct bignum *b) {
 	struct bignum *c; // the integer part of b
 	double d; // the fraction part of b
 	// extract integer and fractional parts
