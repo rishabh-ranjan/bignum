@@ -168,6 +168,8 @@ struct bignum *string_to_bignum(const char *str) {
  */
 #define TEN 10
 #define ZERO_STRING "0"
+// maximum number of characters after point (fractional decimal digits)
+#define FDMAX 20
 char *bignum_to_string(const struct bignum *num) {
 	int ofsdi = num->point_offset - 1; // offset digit index; . is to its left
 	int fnzdi; // first non-zero digit index
@@ -197,10 +199,13 @@ char *bignum_to_string(const struct bignum *num) {
 		*iter++ = ZERO_CHAR; // 0.1 instead of .1
 	}
 
+	int point_set = 0; // has point been put?
+	int fdctr = 0; // fractional digit counter
 	for (int di = lnzdi; di >= fnzdi; --di) {
 		if (di == ofsdi) {
 			// put floating point (if not at the end)
 			*iter++ = DOT_CHAR;
+			point_set = 1;
 		}
 
 		char *mtmp = malloc((RNUM + 2) * sizeof(char));
@@ -216,11 +221,20 @@ char *bignum_to_string(const struct bignum *num) {
 		// add zeroes unless left-most and left of point
 		if (di != lnzdi || di <= ofsdi) {
 			for (int j = 0; j < RNUM - ctr; ++j) {
-				*iter++ = ZERO_CHAR;
+				if (fdctr < FDMAX) {
+					*iter++ = ZERO_CHAR;
+					if (point_set) ++fdctr;
+				}
 			}
 		}
 		// add decimal digit chars
-		while (ctr--) *iter++ = *--tmp;
+		while (ctr--) {
+			char ch = *--tmp;
+			if (fdctr < FDMAX) {
+				*iter++ = ch;
+				if (point_set) ++fdctr;
+			}
+		}
 		free(mtmp);
 #ifdef DEBUG
 		*iter++ = '_';
