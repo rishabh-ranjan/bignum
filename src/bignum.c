@@ -221,6 +221,18 @@ char *bignum_to_string(const struct bignum *num) {
 }
 
 /*
+ * Trims the fraction part of num to have only
+ * `precision' digits of precision after the point.
+ * Changes take place in the original bignum.
+ */
+void trim_fraction(struct bignum *num, int precision) {
+	int shift = num->point_offset - precision;
+	fprintf(stderr, "shift = %d\n", shift);
+	num->digits += shift;
+	num->point_offset -= shift;
+}
+
+/*
  * Get digit at position `ind' from `num'.
  * Position 0 is just left of point.
  * +ve, -ve positions even outside those stored are supported.
@@ -439,7 +451,12 @@ struct bignum *long_div(const struct bignum *a, const struct bignum *b) {
 // TODO: error checking
 // TODO: can bignum_to_string handle num_digits = 0?
 // does .00000000000000000000000 break it?
+// TODO: make precision a parameter
 struct bignum *sqrt_unsigned(struct bignum *a) {
+	fprintf(stderr, "sqrt_u <- %s\n", bignum_to_string(a));
+	if (a->point_offset > PRECISION*2) {
+		trim_fraction(a, PRECISION*2);
+	}
 	// sz is number of digits in a after adding zeroes left and right
 	// to get paired digits that give required precision
 	// sz is even
@@ -554,17 +571,22 @@ struct bignum *pow_uint(struct bignum *a, struct bignum *b) {
 /*
  * Return bth root of a.
  * Ignore signs of a and b.
+ * Works for b > 1.
  */
 // number of bits after point in 1/b to be considered
 // TODO: analyze error bounds
-#define ITERATIONS 51
+// TODO: I have changed this
+#define ITERATIONS 20
 struct bignum *root_small(struct bignum *a, int b) {
 	double c = 1.0L/b;
 	struct bignum *ret = bignum_alloc(1);
 	ret->digits[0] = 1;
 	struct bignum *tmp = clone(a);
-	for (int i = 0; i < ITERATIONS; ++i) {
+	//for (int i = 0; i < ITERATIONS; ++i) {
+	while (c) {
+		//fprintf(stderr, "i = %d, tmp = %s\n", i, bignum_to_string(tmp));
 		tmp = sqrt_unsigned(tmp);
+		fprintf(stderr, "sqrt_u -> %s\n", bignum_to_string(tmp));
 		c *= 2;
 		int d = (int)c;
 		if (d) {
@@ -584,8 +606,10 @@ struct bignum *root_small(struct bignum *a, int b) {
 // eg. 32 ^ 0.2 gives 1.999... not 2
 struct bignum *pow_unsigned(struct bignum *a, struct bignum *b) {
 	struct bignum *ret = pow_uint(a, b);
+	fprintf(stderr, "unit -> %s\n", bignum_to_string(ret));
 	for (int i = 0; i < b->point_offset; ++i) {
-		ret = root_small(ret, b);
+		ret = root_small(ret, RADIX);
+		fprintf(stderr, "ret = %s\n", bignum_to_string(ret));
 	}
 	return ret;
 }
@@ -621,16 +645,16 @@ int main() {
 
 #if 1
 		char *ia = malloc(1000 * sizeof(char));
-		//char *ib = malloc(1000 * sizeof(char));
-		int c;
+		char *ib = malloc(1000 * sizeof(char));
+		//int c;
 		printf("a:\n");
 		scanf("%s", ia);
-		//printf("b:\n");
-		//scanf("%s", ib);
-		printf("c:\n");
-		scanf("%d", &c);
+		printf("b:\n");
+		scanf("%s", ib);
+		//printf("c:\n");
+		//scanf("%d", &c);
 		struct bignum *a = string_to_bignum(ia);
-		//struct bignum *b = string_to_bignum(ib);
+		struct bignum *b = string_to_bignum(ib);
 		/*
 		struct bignum *radd = add_unsigned(a, b);
 		struct bignum *rsub = sub_unsigned(a, b);
@@ -653,9 +677,17 @@ int main() {
 		char *ipow = bignum_to_string(rpow);
 		printf("pow:\n%s\n", ipow);
 		*/
+		/*
 		struct bignum *rroot = root_small(a, c);
 		char *iroot = bignum_to_string(rroot);
 		printf("root:\n%s\n", iroot);
+		*/
+		struct bignum *rpow = pow_signed(a, b);
+		char *ipow = bignum_to_string(rpow);
+		printf("pow:\n%s\n", ipow);
+		//
+		// TODO: negative to power fraction should given error msg
+		// TODO: division by zero should give error
 #endif
 	}
 }

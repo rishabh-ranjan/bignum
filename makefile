@@ -5,7 +5,7 @@ RELEASE  = release
 
 CC       = gcc
 CFLAGS   = -std=gnu11 -O3 -Wall -Wextra -Wpedantic -Wstrict-aliasing
-DFLAGS   = -DDEBUG
+DFLAGS   = -DDEBUG -g
 
 SRC      = $(shell find $(SRC_DIR) -type f -name *.c | xargs basename)
 OBJ      = $(SRC:.c=.o)
@@ -28,6 +28,10 @@ $(RELEASE)/%.o: $(SRC_DIR)/%.c
 .PHONY: drun
 drun: $(DEBUG)/$(EXEC)
 	$(DEBUG)/$(EXEC)
+
+.PHONY: debug
+debug: $(DEBUG)/$(EXEC)
+	valgrind --track-origins=yes --dsymutil=yes $(DEBUG)/$(EXEC)
 
 .PHONY: rrun
 rrun: $(RELEASE)/$(EXEC)
