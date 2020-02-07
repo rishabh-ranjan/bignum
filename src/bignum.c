@@ -471,7 +471,7 @@ static struct bignum *trim_fraction(const struct bignum *num, int precision) {
  * Return sqrt a to `PRECISION' bignum digits of precision.
  * Ignore sign.
  */
-struct bignum *sqrt_unsigned(const struct bignum *a) {
+static struct bignum *sqrt_unsigned(const struct bignum *a) {
 	// this prevents naz (defined below) from being negative.
 	if (a->point_offset > PRECISION*2) {
 		trim_fraction(a, PRECISION*2);
@@ -550,6 +550,17 @@ struct bignum *sqrt_unsigned(const struct bignum *a) {
 	bignum_free(dig);
 	bignum_free(rem);
 	return ret;
+}
+
+/*
+ * Return sqrt(a) if a is non-negative.
+ * Else return NULL.
+ */
+struct bignum *sqrt_signed(const struct bignum *a) {
+	if (a->sign && strcmp(bignum_to_string(a), ZERO_STRING) != 0) {
+		return NULL;
+	}
+	return sqrt_unsigned(a);
 }
 
 /*
@@ -672,23 +683,32 @@ static struct bignum *pow_sfrac(const struct bignum *a, double b) {
  * even when final answer is small enough.
  * Also after 9 digits after point, as ignored by this function,
  * the exponent barely makes a difference.
+ *
+ * Return NULL if a is negative and b has fractional part.
  */
 struct bignum *long_pow(const struct bignum *a, const struct bignum *b) {
-	const struct bignum *c; // the integer part of b
+	struct bignum *c; // the integer part of b
 	double d; // the fraction part of b
 	// extract integer and fractional parts
 	// function can be optimized for c = 0 or d = 0 cases
 	if (b->point_offset == 0) {
-		c = b;
+		c = clone(b);
 		d = 0;
 	} else {
 		c = trim_fraction(b, 0);
 		d = (double)b->digits[b->point_offset - 1] / RADIX;
 		if (b->sign) d = -d;
 	}
+	if (a->sign && strcmp(bignum_to_string(a), ZERO_STRING) != 0) {
+		if (d != 0) {
+			bignum_free(c);
+			return NULL;
+		}
+	}
 	struct bignum *tmp1 = pow_sint(a, c);
 	struct bignum *tmp2 = pow_sfrac(a, d);
 	struct bignum *ret = long_mul(tmp1, tmp2);
+	bignum_free(c);
 	bignum_free(tmp1);
 	bignum_free(tmp2);
 	return ret;

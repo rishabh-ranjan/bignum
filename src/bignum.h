@@ -12,7 +12,7 @@ int mag_comp(const struct bignum*, const struct bignum*);
 struct bignum *addsub_signed(const struct bignum*, const struct bignum*, int);
 struct bignum *long_mul(const struct bignum*, const struct bignum*);
 struct bignum *long_div(const struct bignum*, const struct bignum*);
-struct bignum *sqrt_unsigned(const struct bignum*);
+struct bignum *sqrt_signed(const struct bignum*);
 struct bignum *long_pow(const struct bignum*, const struct bignum*);
 
 #endif
