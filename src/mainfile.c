@@ -97,7 +97,9 @@ void bpow() {
 	bignum_free(b);
 }
 
-int main() {
+int main(int argc, char **argv) {
+	freopen(argv[1], "r", stdin);
+	freopen(argv[2], "w", stdout);
 	char op[10];
 	while (scanf("%s", op) != EOF) {
 		if (strcmp(op, "ADD") == 0) badd();
